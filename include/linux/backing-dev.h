@@ -45,45 +45,86 @@ enum bdi_stat_item {
 
 #define BDI_STAT_BATCH (8*(1+ilog2(nr_cpu_ids)))
 
+/*
+ * inode在b_dirty,b_io和b_more_io中的调度过程:
+ * 在inode首次dirty时,将被链入以b_dirtry为表头的链表,该链表按照inode被弄脏的时间排序.
+ * 然后,在inode被调度回写时,将被链入以b_io为表头的链表,这个链表的inode来自于b_dirty和
+ * b_more_io,也基本上按inode被弄脏的时间排序,只是将属于同一个超级块的inode组织在一起.
+ * 为了防止一次性完整回写大文件inode导致其他inode饥饿,每轮循环每个inode能回写的页面数
+ * 有限制,在达到该限制后,inode被链入b_more_io,直到b_io链表为空,才有再次回写的机会.
+ */
+/* bdi回写线程 */
 struct bdi_writeback {
+	/* 回指到所属bdi描述符的指针 */
 	struct backing_dev_info *bdi;	/* our parent bdi */
+	/*
+	 * 每个bdi可以启动的最大回写线程数,即可关联的bdi_writeback数为32.
+	 * 这个域为它所属bdi的编号.因为当前每个bdi只支持一个bdi_writeback,
+	 * 因此该值固定为0.
+	*/
 	unsigned int nr;
 
+	/* 上一次冲刷旧数据的时间,以jiffies为单位 */
 	unsigned long last_old_flush;	/* last old data flush */
 	unsigned long last_active;	/* last time bdi thread was active */
 
+	/* 指向执行线程的指针 */
 	struct task_struct *task;	/* writeback thread */
 	struct timer_list wakeup_timer; /* used for delayed bdi thread wakeup */
+	/*
+	 * dirty inode回写用到三个链表
+	 * 在inode首次被dirty时,将被链入以b_dirty为表头的链表.
+	 * 在inode被调度回写时,被链入以b_io为表头的链表.
+	 * 引入b_more_io链表以防止一次性完整回写大文件inode导致其他inode饥饿
+	 */
 	struct list_head b_dirty;	/* dirty inodes */
 	struct list_head b_io;		/* parked for writeback */
 	struct list_head b_more_io;	/* parked for more writeback */
 };
 
 struct backing_dev_info {
+	/* 链入活动bdi或待处理bdi链表的连接件 */
 	struct list_head bdi_list;
+	/* 最大预读长度,以PAGE_CACHE_SIZE为单位 */
 	unsigned long ra_pages;	/* max readahead in PAGE_CACHE_SIZE units */
+	/* bdi状态,如已注册,待处理,未使用等 */
 	unsigned long state;	/* Always use atomic bitops on this */
+	/* 设备能力 */
 	unsigned int capabilities; /* Device capabilities */
+	/* 判断这个bdi设备是否是拥塞的回调方法 */
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
+	/* 传递给congested_fn的辅助参数 */
 	void *congested_data;	/* Pointer to aux data for congested func */
+	/* 用于为这个bdi泄流的方法 */
 	void (*unplug_io_fn)(struct backing_dev_info *, struct page *);
+	/* 传递给unplug_io_fn的辅助参数 */
 	void *unplug_io_data;
 
+	/* 这个bdi的名字 */
 	char *name;
 
+	/* 用于统计目的的域 */
 	struct percpu_counter bdi_stat[NR_BDI_STAT_ITEMS];
 
+	/* 用于完成计数的域 */
 	struct prop_local_percpu completions;
+	/* 如果为1,表示这个bdi超过了"脏门槛" */
 	int dirty_exceeded;
 
+	/* 分配给这个bdi的全局"脏门槛"的最小百分比 */
 	unsigned int min_ratio;
+	/* 分配给这个bdi的全局"脏门槛"的最大百分比 */
 	unsigned int max_ratio, max_prop_frac;
 
+	/* 这个bdi默认的回写线程 */
 	struct bdi_writeback wb;  /* default writeback info for this bdi */
+	/* 保护这个bdi的链表的自旋锁 */
 	spinlock_t wb_lock;	  /* protects work_list */
 
+	/* 这个bdi的显式冲刷任务链表的表头 */
 	struct list_head work_list;
 
+	/* 指向对应的device描述符的指针 */
 	struct device *dev;
 
 	struct timer_list laptop_mode_wb_timer;

@@ -42,7 +42,15 @@ static struct class *bdi_class;
  * locking.
  */
 DEFINE_SPINLOCK(bdi_lock);
+/*
+ * bdi_list表示活动的bdi链表,这个链表中的bdi可能是正在运行回写线程,
+ * 也可能是回写线程已经完成.
+ */
 LIST_HEAD(bdi_list);
+/*
+ * bdi_pending_list表示待处理的BDI链表,这个链表中的BDI一定是没有回写线程在运行,
+ * 但是因为它有回写任务,即将为它启动回写线程来执行.
+ */
 LIST_HEAD(bdi_pending_list);
 
 static struct task_struct *sync_supers_tsk;
