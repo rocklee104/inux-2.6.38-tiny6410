@@ -512,7 +512,7 @@ static int s3c_nand_correct_data(struct mtd_info *mtd, u_char *dat, u_char *read
 			dat[(nfestat0 >> 16) & 0x3ff] ^= ((nfmlcbitpt >> 8) & 0xff);
 
 		case 1: /* 1 bit error (Correctable) */
-			printk("s3c-nand: %d bit(s) error detected, corrected successfully\n", err_type);
+			//printk("s3c-nand: %d bit(s) error detected, corrected successfully\n", err_type);
 			dat[nfestat0 & 0x3ff] ^= (nfmlcbitpt & 0xff);
 			ret = err_type;
 			break;
@@ -800,7 +800,7 @@ static int s3c_nand_probe(struct platform_device *pdev, enum s3c_cpu_type cpu_ty
 	s3c_mtd = kmalloc(sizeof(struct mtd_info) + sizeof(struct nand_chip), GFP_KERNEL);
 
 	if (!s3c_mtd) {
-		printk("Unable to allocate NAND MTD dev structure.\n");
+		//printk("Unable to allocate NAND MTD dev structure.\n");
 		return -ENOMEM;
 	}
 
