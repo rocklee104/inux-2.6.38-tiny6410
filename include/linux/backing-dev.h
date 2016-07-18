@@ -351,6 +351,7 @@ static inline bool bdi_cap_swap_backed(struct backing_dev_info *bdi)
 	return bdi->capabilities & BDI_CAP_SWAP_BACKED;
 }
 
+/* 只有系统默认的bdi具有孵化能力 */
 static inline bool bdi_cap_flush_forker(struct backing_dev_info *bdi)
 {
 	return bdi == &default_backing_dev_info;

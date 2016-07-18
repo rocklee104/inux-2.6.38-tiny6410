@@ -544,6 +544,7 @@ int bdi_register(struct backing_dev_info *bdi, struct device *parent,
 	 * and add other bdi's to the list. They will get a thread created
 	 * on-demand when they need it.
 	 */
+	/* 对于有孵化能力的bdi,启动forker内核线程.只有系统默认的bdi具有该能力  */
 	if (bdi_cap_flush_forker(bdi)) {
 		struct bdi_writeback *wb = &bdi->wb;
 
@@ -557,6 +558,7 @@ int bdi_register(struct backing_dev_info *bdi, struct device *parent,
 	set_bit(BDI_registered, &bdi->state);
 
 	spin_lock_bh(&bdi_lock);
+	/* 将bdi加入全局bdi链表 */
 	list_add_tail_rcu(&bdi->bdi_list, &bdi_list);
 	spin_unlock_bh(&bdi_lock);
 
