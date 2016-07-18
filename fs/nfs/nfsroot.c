@@ -87,7 +87,7 @@
 #define NFS_ROOT		"/tftpboot/%s"
 
 /* Default NFSROOT mount options. */
-#define NFS_DEF_OPTIONS		"udp"
+#define NFS_DEF_OPTIONS		"tcp"
 
 /* Parameters passed from the kernel command line */
 static char nfs_root_parms[256] __initdata = "";
