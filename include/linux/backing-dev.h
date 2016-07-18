@@ -38,7 +38,9 @@ enum bdi_state {
 typedef int (congested_fn)(void *, int);
 
 enum bdi_stat_item {
+    /* 回收的bdi个数 */
 	BDI_RECLAIMABLE,
+    /* 回写的bdi个数 */
 	BDI_WRITEBACK,
 	NR_BDI_STAT_ITEMS
 };
@@ -121,7 +123,7 @@ struct backing_dev_info {
 	/* 保护这个bdi的链表的自旋锁 */
 	spinlock_t wb_lock;	  /* protects work_list */
 
-	/* 这个bdi的显式冲刷任务链表的表头 */
+	/* 这个bdi的显式冲刷任务链表的表头,链表成员是wb */
 	struct list_head work_list;
 
 	/* 指向对应的device描述符的指针 */
@@ -154,6 +156,7 @@ extern spinlock_t bdi_lock;
 extern struct list_head bdi_list;
 extern struct list_head bdi_pending_list;
 
+/* wb链表中挂有inode,表示这个wb有dirty io */
 static inline int wb_has_dirty_io(struct bdi_writeback *wb)
 {
 	return !list_empty(&wb->b_dirty) ||

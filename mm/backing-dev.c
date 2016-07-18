@@ -247,10 +247,12 @@ static int __init default_bdi_init(void)
 	BUG_ON(IS_ERR(sync_supers_tsk));
 
 	setup_timer(&sync_supers_timer, sync_supers_timer_fn, 0);
+    /* 设置定时器超时时间,默认5s执行sync_supers_timer_fn一次来唤醒bdi_sync_supers */
 	bdi_arm_supers_timer();
 
 	err = bdi_init(&default_backing_dev_info);
 	if (!err)
+        /* 注册default bdi */
 		bdi_register(&default_backing_dev_info, NULL, "default");
 	err = bdi_init(&noop_backing_dev_info);
 
@@ -287,6 +289,7 @@ static int bdi_sync_supers(void *unused)
 
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_INTERRUPTIBLE);
+        /* 等待sync_supers_timer_fn唤醒 */
 		schedule();
 
 		/*
@@ -366,6 +369,7 @@ static unsigned long bdi_longest_inactive(void)
 	return max(5UL * 60 * HZ, interval);
 }
 
+/* 只有default_backing_dev_info注册的时候能启动forker线程.这个线程用于帮助其他bdi生产flusher */
 static int bdi_forker_thread(void *ptr)
 {
 	struct bdi_writeback *me = ptr;
@@ -391,6 +395,7 @@ static int bdi_forker_thread(void *ptr)
 		 * Temporary measure, we want to make sure we don't see
 		 * dirty data on the default backing_dev_info
 		 */
+        /* 执行default_backing_dev_info本身的冲刷工作 */
 		if (wb_has_dirty_io(me) || !list_empty(&me->bdi->work_list)) {
 			del_timer(&me->wakeup_timer);
 			wb_do_writeback(me, 0);
