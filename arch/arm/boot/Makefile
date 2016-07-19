@@ -56,6 +56,10 @@ $(obj)/compressed/vmlinux: $(obj)/Image FORCE
 $(obj)/zImage:	$(obj)/compressed/vmlinux FORCE
 	$(call if_changed,objcopy)
 	@echo '  Kernel: $@ is ready'
+	@if test "$(CONFIG_ARCH_S3C64XX) -eq "y""; then \
+		cp $@ /tftp; \
+		echo "cp $@ to /tftp done"; \
+	fi
 
 endif
 
