@@ -26,6 +26,7 @@ struct dentry;
  * Bits in backing_dev_info.state
  */
 enum bdi_state {
+	/* 当前bdi正在处理任务(待定),如果有进程试图注销掉这个bdi,那么那个进程就会阻塞 */
 	BDI_pending,		/* On its way to being activated */
 	BDI_wb_alloc,		/* Default embedded wb allocated */
 	BDI_async_congested,	/* The async (write) queue is getting full */

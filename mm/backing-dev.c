@@ -366,6 +366,7 @@ static unsigned long bdi_longest_inactive(void)
 	unsigned long interval;
 
 	interval = msecs_to_jiffies(dirty_writeback_interval * 10);
+	/* 在5min和interval之间取最大值 */
 	return max(5UL * 60 * HZ, interval);
 }
 
@@ -407,6 +408,7 @@ static int bdi_forker_thread(void *ptr)
 		list_for_each_entry(bdi, &bdi_list, bdi_list) {
 			bool have_dirty_io;
 
+			/* 跳过那些没有回写能力的bdi,同时也不处理default_backing_dev_info自己 */
 			if (!bdi_cap_writeback_dirty(bdi) ||
 			     bdi_cap_flush_forker(bdi))
 				continue;
@@ -414,6 +416,11 @@ static int bdi_forker_thread(void *ptr)
 			WARN(!test_bit(BDI_registered, &bdi->state),
 			     "bdi %p/%s is not registered!\n", bdi, bdi->name);
 
+			/*
+			 * 判断bdi是否有冲刷任务:
+			 * 有显式的冲刷任务:即这个BDI的work_list链表不为空.
+			 * 有隐式的回写需求:即这个BDI包含"脏"数据,b_dirty或b_io或b_more_io链表不为空
+			 */
 			have_dirty_io = !list_empty(&bdi->work_list) ||
 					wb_has_dirty_io(&bdi->wb);
 
@@ -421,11 +428,13 @@ static int bdi_forker_thread(void *ptr)
 			 * If the bdi has work to do, but the thread does not
 			 * exist - create it.
 			 */
+			/* 当一个bdi有冲刷任务要做,但是没有创建冲刷线程,那么就需要创建一个 */
 			if (!bdi->wb.task && have_dirty_io) {
 				/*
 				 * Set the pending bit - if someone will try to
 				 * unregister this bdi - it'll wait on this bit.
 				 */
+				/* 当前bdi正在处理任务(待定),如果有进程试图注销掉这个bdi,那么那个进程就会阻塞 */
 				set_bit(BDI_pending, &bdi->state);
 				action = FORK_THREAD;
 				break;
@@ -439,9 +448,11 @@ static int bdi_forker_thread(void *ptr)
 			 * to make sure no-one adds more work to this bdi and
 			 * wakes the bdi thread up.
 			 */
+			/* 当一个bdi闲置时间过长,就需要kill掉 */
 			if (bdi->wb.task && !have_dirty_io &&
 			    time_after(jiffies, bdi->wb.last_active +
 						bdi_longest_inactive())) {
+				/* 当前的时间超过上次的活动的时间(默认5min) */
 				task = bdi->wb.task;
 				bdi->wb.task = NULL;
 				spin_unlock(&bdi->wb_lock);
@@ -454,12 +465,14 @@ static int bdi_forker_thread(void *ptr)
 		spin_unlock_bh(&bdi_lock);
 
 		/* Keep working if default bdi still has things to do */
+		/* 当前default_backing_dev_info还有write_back需要处理,不能sleep */
 		if (!list_empty(&me->bdi->work_list))
 			__set_current_state(TASK_RUNNING);
 
 		switch (action) {
 		case FORK_THREAD:
 			__set_current_state(TASK_RUNNING);
+			/* 为有冲刷任务,但是没有冲刷线程的bdi创建一个冲刷线程 */
 			task = kthread_create(bdi_writeback_thread, &bdi->wb,
 					      "flush-%s", dev_name(bdi->dev));
 			if (IS_ERR(task)) {
@@ -478,6 +491,7 @@ static int bdi_forker_thread(void *ptr)
 				spin_lock_bh(&bdi->wb_lock);
 				bdi->wb.task = task;
 				spin_unlock_bh(&bdi->wb_lock);
+				/* 唤醒冲刷线程 */
 				wake_up_process(task);
 			}
 			break;
@@ -488,6 +502,7 @@ static int bdi_forker_thread(void *ptr)
 			break;
 
 		case NO_ACTION:
+			/* 没有任何任务时,forker线程阻塞 */
 			if (!wb_has_dirty_io(me) || !dirty_writeback_interval)
 				/*
 				 * There are no dirty data. The only thing we
@@ -507,8 +522,10 @@ static int bdi_forker_thread(void *ptr)
 		/*
 		 * Clear pending bit and wakeup anybody waiting to tear us down.
 		 */
+		/* 唤醒那些等待我们清除BDI_pending的线程 */
 		clear_bit(BDI_pending, &bdi->state);
 		smp_mb__after_clear_bit();
+		/* 唤醒等待BDI_pending状态清除的进程(比如进行bdi_unregister) */
 		wake_up_bit(&bdi->state, BDI_pending);
 	}
 

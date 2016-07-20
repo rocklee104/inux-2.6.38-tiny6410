@@ -879,6 +879,7 @@ int bdi_writeback_thread(void *data)
 		 * Remove own delayed wake-up timer, since we are already awake
 		 * and we'll take care of the preriodic write-back.
 		 */
+		/* 当前flush线程已经唤醒了,周期性回写需要暂停 */
 		del_timer(&wb->wakeup_timer);
 
 		pages_written = wb_do_writeback(wb, 0);
@@ -909,6 +910,7 @@ int bdi_writeback_thread(void *data)
 	}
 
 	/* Flush any work that raced with us exiting */
+	/* 受到信号,退出循环,需要处理完所有的冲刷工作 */
 	if (!list_empty(&bdi->work_list))
 		wb_do_writeback(wb, 1);
 
