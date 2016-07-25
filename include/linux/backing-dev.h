@@ -124,7 +124,7 @@ struct backing_dev_info {
 	/* 保护这个bdi的链表的自旋锁 */
 	spinlock_t wb_lock;	  /* protects work_list */
 
-	/* 这个bdi的显式冲刷任务链表的表头,链表成员是wb */
+	/* 这个bdi的显式冲刷任务链表的表头,链表成员是wb_writeback_work */
 	struct list_head work_list;
 
 	/* 指向对应的device描述符的指针 */

@@ -440,6 +440,7 @@ static int bdi_forker_thread(void *ptr)
 				break;
 			}
 
+			/* 保护bdi->wb.task,确保其访问排他 */
 			spin_lock(&bdi->wb_lock);
 
 			/*
@@ -498,11 +499,12 @@ static int bdi_forker_thread(void *ptr)
 
 		case KILL_THREAD:
 			__set_current_state(TASK_RUNNING);
+			/* 在判断线程闲置的过程中对task已经赋值 */
 			kthread_stop(task);
 			break;
 
 		case NO_ACTION:
-			/* 没有任何任务时,forker线程阻塞 */
+			/* 没有任何任务时,forker线程阻塞5min */
 			if (!wb_has_dirty_io(me) || !dirty_writeback_interval)
 				/*
 				 * There are no dirty data. The only thing we
@@ -513,6 +515,7 @@ static int bdi_forker_thread(void *ptr)
 				 */
 				schedule_timeout(bdi_longest_inactive());
 			else
+				/* 如果default_backing_dev_info本身有dirty io,休眠5s */
 				schedule_timeout(msecs_to_jiffies(dirty_writeback_interval * 10));
 			try_to_freeze();
 			/* Back to the main loop */

@@ -814,6 +814,7 @@ static long wb_check_old_data_flush(struct bdi_writeback *wb)
 /*
  * Retrieve work items and do the writeback they describe
  */
+/* 返回回写的页面数,force_wait == 1表示要等到所有冲刷实际写到磁盘 */
 long wb_do_writeback(struct bdi_writeback *wb, int force_wait)
 {
 	struct backing_dev_info *bdi = wb->bdi;
@@ -821,11 +822,13 @@ long wb_do_writeback(struct bdi_writeback *wb, int force_wait)
 	long wrote = 0;
 
 	set_bit(BDI_writeback_running, &wb->bdi->state);
+	/* 从bdi的work_list中一次取出wb_writeback_work */
 	while ((work = get_next_work_item(bdi)) != NULL) {
 		/*
 		 * Override sync mode, in case we must wait for completion
 		 * because this thread is exiting now.
 		 */
+		/* 函数指定要等到冲刷完成 */
 		if (force_wait)
 			work->sync_mode = WB_SYNC_ALL;
 
@@ -846,6 +849,7 @@ long wb_do_writeback(struct bdi_writeback *wb, int force_wait)
 	/*
 	 * Check for periodic writeback, kupdated() style
 	 */
+	/* 定期执行kupdate风格的回写,即回写超过特定驻留时间的"脏"页面 */
 	wrote += wb_check_old_data_flush(wb);
 	wrote += wb_check_background_flush(wb);
 	clear_bit(BDI_writeback_running, &wb->bdi->state);
