@@ -504,7 +504,7 @@ static int bdi_forker_thread(void *ptr)
 			break;
 
 		case NO_ACTION:
-			/* 没有任何任务时,forker线程阻塞5min */
+			/* default_backing_dev_info没有任何io任务时,forker线程阻塞5min */
 			if (!wb_has_dirty_io(me) || !dirty_writeback_interval)
 				/*
 				 * There are no dirty data. The only thing we

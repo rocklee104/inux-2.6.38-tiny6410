@@ -25,14 +25,22 @@ enum writeback_sync_modes {
  * in a manner such that unspecified fields are set to zero.
  */
 struct writeback_control {
+	/*
+	 * 回写执行对于inode锁的同步模式,WB_SYNC_NONE表示回写过程中跳过已上锁的inode,
+	 * WB_SYNC_ALL表示等待它解锁后执行回写.
+	 */
 	enum writeback_sync_modes sync_mode;
+	/* 如果非NULL,只回写比这个时间更早的inode到磁盘.这个域的优先级高于nr_to_write */
 	unsigned long *older_than_this;	/* If !NULL, only write back inodes
 					   older than this */
+	/* writeback_inodes_wb函数被调用的时间 */
 	unsigned long wb_start;         /* Time writeback_inodes_wb was
 					   called. This is needed to avoid
 					   extra jobs and livelock */
+	/* 回写页面是数目,每写完一个页面数减一 */
 	long nr_to_write;		/* Write this many pages, and decrement
 					   this for each page written */
+	/* 跳过而没执行回写的页面数目 */
 	long pages_skipped;		/* Pages which were not written */
 
 	/*
@@ -40,10 +48,14 @@ struct writeback_control {
 	 * a hint that the filesystem need only write out the pages inside that
 	 * byterange.  The byte at `end' is included in the writeout request.
 	 */
+	/* 回写范围的起始字节偏移(含) */
 	loff_t range_start;
+	/* 回写范围的结束字节偏移(含) */
 	loff_t range_end;
 
+	/* 1表示不阻塞 */
 	unsigned nonblocking:1;		/* Don't get stuck on request queues */
+	/* 1表示遭遇拥塞 */
 	unsigned encountered_congestion:1; /* An output: a queue is full */
 	unsigned for_kupdate:1;		/* A kupdate writeback */
 	unsigned for_background:1;	/* A background writeback */
