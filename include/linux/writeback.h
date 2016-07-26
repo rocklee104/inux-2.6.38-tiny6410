@@ -57,16 +57,28 @@ struct writeback_control {
 	unsigned nonblocking:1;		/* Don't get stuck on request queues */
 	/* 1表示遭遇拥塞 */
 	unsigned encountered_congestion:1; /* An output: a queue is full */
+    /*
+     * 如果为1,表示kupdate回写.即将超过特定驻留时间的"脏"页面回写到磁盘.
+     * 当"脏"页面在内存中驻留的时间超过一个特定的的阈值时,内核必须将超时
+     * 的脏页面回写到磁盘,以确保脏页面不会无期限地驻留在内存中.
+     */
 	unsigned for_kupdate:1;		/* A kupdate writeback */
+    /*
+     * 如果为1,表示为后台回写,后台回写用于释放内存目的.如果系统脏页面
+     * 总数降到"脏门槛"以下,则结束回写操作.
+     */
 	unsigned for_background:1;	/* A background writeback */
+    /* 如果为1,表示该writeback为页面回收而调用 */
 	unsigned for_reclaim:1;		/* Invoked from the page allocator */
+    /* 如果为1,表明回写不受rang_start和range_end范围的限制,即在地址空间内循环查找可以回写的页面 */
 	unsigned range_cyclic:1;	/* range_start is cyclic */
+    /* 如果为1,表示有更多的IO等待派发 */
 	unsigned more_io:1;		/* more io to be dispatched */
 };
 
 /*
  * fs/fs-writeback.c
- */	
+ */
 struct bdi_writeback;
 int inode_wait(void *);
 void writeback_inodes_sb(struct super_block *);

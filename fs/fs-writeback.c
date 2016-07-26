@@ -35,9 +35,23 @@
 struct wb_writeback_work {
 	long nr_pages;
 	struct super_block *sb;
+	/*
+	 * 回写执行对于inode锁的同步模式,WB_SYNC_NONE表示回写过程中跳过已上锁的inode,
+	 * WB_SYNC_ALL表示等待它解锁后执行回写.
+	 */
 	enum writeback_sync_modes sync_mode;
+    /*
+     * 如果为1,表示kupdate回写.即将超过特定驻留时间的"脏"页面回写到磁盘.
+     * 当"脏"页面在内存中驻留的时间超过一个特定的的阈值时,内核必须将超时
+     * 的脏页面回写到磁盘,以确保脏页面不会无期限地驻留在内存中.
+     */
 	unsigned int for_kupdate:1;
+    /* 如果为1,表明回写不受rang_start和range_end范围的限制,即在地址空间内循环查找可以回写的页面 */
 	unsigned int range_cyclic:1;
+    /*
+     * 如果为1,表示为后台回写,后台回写用于释放内存目的.如果系统脏页面
+     * 总数降到"脏门槛"以下,则结束回写操作.
+     */
 	unsigned int for_background:1;
 
 	struct list_head list;		/* pending work list */
@@ -633,8 +647,10 @@ static long wb_writeback(struct bdi_writeback *wb,
 	long write_chunk;
 	struct inode *inode;
 
+    /* kupdate,也就是根据驻留内存的时间回写 */
 	if (wbc.for_kupdate) {
 		wbc.older_than_this = &oldest_jif;
+        /* 回写相对于当前5s之前的inode */
 		oldest_jif = jiffies -
 				msecs_to_jiffies(dirty_expire_interval * 10);
 	}
