@@ -101,6 +101,10 @@ static inline struct inode *wb_inode(struct list_head *head)
 /* Wakeup flusher thread or forker thread to fork it. Requires bdi->wb_lock. */
 static void bdi_wakeup_flusher(struct backing_dev_info *bdi)
 {
+	/*
+	 * 如果bdi存在flusher,激活flusher.否则激活forker进程.
+	 * forker进程会创建这个bdi的flusher并且激活这个进程.
+	 */
 	if (bdi->wb.task) {
 		wake_up_process(bdi->wb.task);
 	} else {
@@ -217,8 +221,10 @@ static void redirty_tail(struct inode *inode)
  */
 static void requeue_io(struct inode *inode)
 {
+	/* 获取inode对应的bdi_writeback */
 	struct bdi_writeback *wb = &inode_to_bdi(inode)->wb;
 
+	/* 将inode移动到b_more_io链表 */
 	list_move(&inode->i_wb_list, &wb->b_more_io);
 }
 
@@ -249,6 +255,7 @@ static bool inode_dirtied_after(struct inode *inode, unsigned long t)
 /*
  * Move expired dirty inodes from @delaying_queue to @dispatch_queue.
  */
+/* 将dirty inode从delaying_queue链表上移动到dispatch_queue链表 */
 static void move_expired_inodes(struct list_head *delaying_queue,
 			       struct list_head *dispatch_queue,
 				unsigned long *older_than_this)
@@ -260,25 +267,31 @@ static void move_expired_inodes(struct list_head *delaying_queue,
 	int do_sb_sort = 0;
 
 	while (!list_empty(delaying_queue)) {
+		/* 从delaying_queue的尾部获取inode */
 		inode = wb_inode(delaying_queue->prev);
+		/* 找到dirtied_when之后older_than_this时间的inode */
 		if (older_than_this &&
 		    inode_dirtied_after(inode, *older_than_this))
 			break;
 		if (sb && sb != inode->i_sb)
 			do_sb_sort = 1;
 		sb = inode->i_sb;
+		/* 将未超时的inode从wb的链表中取下来,头插在tmp上 */
 		list_move(&inode->i_wb_list, &tmp);
 	}
 
 	/* just one sb in list, splice to dispatch_queue and we're done */
 	if (!do_sb_sort) {
+		/* 将未超时的inode所在的链表,头插到dispatch_queue */
 		list_splice(&tmp, dispatch_queue);
 		return;
 	}
 
 	/* Move inodes from one superblock together */
+	/* 将tmp中sb相同的inode放到一块 */
 	while (!list_empty(&tmp)) {
 		sb = wb_inode(tmp.prev)->i_sb;
+		/* 从尾部向头部遍历 */
 		list_for_each_prev_safe(pos, node, &tmp) {
 			inode = wb_inode(pos);
 			if (inode->i_sb == sb)
@@ -300,6 +313,7 @@ static void move_expired_inodes(struct list_head *delaying_queue,
  */
 static void queue_io(struct bdi_writeback *wb, unsigned long *older_than_this)
 {
+	/* 将b_more_io中所有的inode移动到b_io的头部 */
 	list_splice_init(&wb->b_more_io, &wb->b_io);
 	move_expired_inodes(&wb->b_dirty, &wb->b_io, older_than_this);
 }
@@ -572,6 +586,7 @@ void writeback_inodes_wb(struct bdi_writeback *wb,
 		struct inode *inode = wb_inode(wb->b_io.prev);
 		struct super_block *sb = inode->i_sb;
 
+		/* 如果无法锁定sb,那么就将inode移动到wb->b_more_io上 */
 		if (!pin_sb_for_writeback(sb)) {
 			requeue_io(inode);
 			continue;
@@ -647,13 +662,17 @@ static long wb_writeback(struct bdi_writeback *wb,
 	long write_chunk;
 	struct inode *inode;
 
-    /* kupdate,也就是根据驻留内存的时间回写 */
+    /*
+     * 是kupdate风格的回写,那么设置older_than_this域,衡量时间计算以当前
+	 * 时刻向前推进dirty_expire_interval个单位.
+	 */
 	if (wbc.for_kupdate) {
 		wbc.older_than_this = &oldest_jif;
         /* 回写相对于当前5s之前的inode */
 		oldest_jif = jiffies -
 				msecs_to_jiffies(dirty_expire_interval * 10);
 	}
+	/* 如果不是在地址空间内循环回写,那么要设置回写范围,从0到LLONG_MAX */
 	if (!wbc.range_cyclic) {
 		wbc.range_start = 0;
 		wbc.range_end = LLONG_MAX;
@@ -682,6 +701,7 @@ static long wb_writeback(struct bdi_writeback *wb,
 		/*
 		 * Stop writeback when nr_pages has been consumed
 		 */
+		/* 已经回写了所要求的页面数 */
 		if (work->nr_pages <= 0)
 			break;
 
@@ -691,6 +711,7 @@ static long wb_writeback(struct bdi_writeback *wb,
 		 * so that e.g. sync can proceed. They'll be restarted
 		 * after the other works are all done.
 		 */
+		/* 如果有其他任务,后台及kupdate的回写需要暂停 */
 		if ((work->for_background || work->for_kupdate) &&
 		    !list_empty(&wb->bdi->work_list))
 			break;
@@ -699,17 +720,21 @@ static long wb_writeback(struct bdi_writeback *wb,
 		 * For background writeout, stop when we are below the
 		 * background dirty threshold
 		 */
+		/* 对于后台回写,系统脏页总数已经降到“脏门槛”以下 */
 		if (work->for_background && !over_bground_thresh())
 			break;
 
 		wbc.more_io = 0;
+		/* 需要写1024个page */
 		wbc.nr_to_write = write_chunk;
 		wbc.pages_skipped = 0;
 
 		trace_wbc_writeback_start(&wbc, wb->bdi);
+		/* 判断是否回写sb */
 		if (work->sb)
 			__writeback_inodes_sb(work->sb, wb, &wbc);
 		else
+			/* 每一次成功回写一个页面,会对wbc.nr_to_write递减1 */
 			writeback_inodes_wb(wb, &wbc);
 		trace_wbc_writeback_written(&wbc, wb->bdi);
 
@@ -719,10 +744,15 @@ static long wb_writeback(struct bdi_writeback *wb,
 		/*
 		 * If we consumed everything, see if we have more
 		 */
+		/* 表明此次循环冲刷了所运行的最大限度页面数目,直接进入下一次循环 */
 		if (wbc.nr_to_write <= 0)
 			continue;
 		/*
 		 * Didn't write everything and we don't have more IO, bail
+		 */
+		/*
+		 * 如果此次冲刷没有达到最大页面数,需要进一步判断more_io,看看是否有更多的io等待派发.
+		 * 这个域在每次循环之处清0,回写过程中如果发现还有io要做,会将它置1.
 		 */
 		if (!wbc.more_io)
 			break;
@@ -737,6 +767,7 @@ static long wb_writeback(struct bdi_writeback *wb,
 		 * we'll just busyloop.
 		 */
 		spin_lock(&inode_lock);
+		/* 等待链表中最后一个inode被回写 */
 		if (!list_empty(&wb->b_more_io))  {
 			inode = wb_inode(wb->b_more_io.prev);
 			trace_wbc_writeback_wait(&wbc, wb->bdi);
@@ -930,7 +961,7 @@ int bdi_writeback_thread(void *data)
 	}
 
 	/* Flush any work that raced with us exiting */
-	/* 受到信号,退出循环,需要处理完所有的冲刷工作 */
+	/* 收到信号,退出循环,需要处理完所有的冲刷工作 */
 	if (!list_empty(&bdi->work_list))
 		wb_do_writeback(wb, 1);
 

@@ -428,7 +428,11 @@ static int bdi_forker_thread(void *ptr)
 			 * If the bdi has work to do, but the thread does not
 			 * exist - create it.
 			 */
-			/* 当一个bdi有冲刷任务要做,但是没有创建冲刷线程,那么就需要创建一个 */
+			/*
+			 * 当一个bdi有冲刷任务要做,但是没有创建冲刷线程,那么就需要创建一个.
+			 * 当前函数不会重入,并且更改wb.task在本函数的后面执行.一下代码读取
+			 * wb.task,不会和wb.task更改部分竞争,所以不用加锁.
+			 */
 			if (!bdi->wb.task && have_dirty_io) {
 				/*
 				 * Set the pending bit - if someone will try to
@@ -440,7 +444,7 @@ static int bdi_forker_thread(void *ptr)
 				break;
 			}
 
-			/* 保护bdi->wb.task,确保其访问排他 */
+			/* 更改bdi->wb.task,确保其读取的线程能够正确处理task,这里需要加锁 */
 			spin_lock(&bdi->wb_lock);
 
 			/*
@@ -489,6 +493,7 @@ static int bdi_forker_thread(void *ptr)
 				 * And as soon as the bdi thread is visible, we
 				 * can start it.
 				 */
+				/* 这里加自旋锁为了确保bdi_queue_work()能够准确的唤醒flusher而不是forker. */
 				spin_lock_bh(&bdi->wb_lock);
 				bdi->wb.task = task;
 				spin_unlock_bh(&bdi->wb_lock);

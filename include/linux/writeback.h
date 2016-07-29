@@ -37,7 +37,7 @@ struct writeback_control {
 	unsigned long wb_start;         /* Time writeback_inodes_wb was
 					   called. This is needed to avoid
 					   extra jobs and livelock */
-	/* 回写页面是数目,每写完一个页面数减一 */
+	/* 需要回写页面的数目,每写完一个页面数减一 */
 	long nr_to_write;		/* Write this many pages, and decrement
 					   this for each page written */
 	/* 跳过而没执行回写的页面数目 */
